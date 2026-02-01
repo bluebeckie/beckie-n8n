@@ -2,7 +2,7 @@
 
 This repository contains an n8n workflow for monitoring and summarizing the latest news from major AI companies.
 
-![AI Watch Tower Workflow](https://github.com/bluebeckie/beckie-n8n/blob/main/AI-WatchTower/AI-Watch-Tower-v2.png)
+![AI Watch Tower Workflow](https://github.com/bluebeckie/beckie-n8n/blob/main/AI-WatchTower/AI-Watch-Tower.png)
 
 ## Workflow Actions
 
