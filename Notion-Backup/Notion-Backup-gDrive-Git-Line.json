@@ -1,0 +1,1656 @@
+{
+  "name": "Notion Backup - GitHub",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 7 * * 5"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1904,
+        -640
+      ],
+      "id": "ea000b3f-3492-47ea-9077-511b46356a4e",
+      "name": "Daily at 2am"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "env-trace-days",
+              "name": "trace_days",
+              "value": 8,
+              "type": "number"
+            },
+            {
+              "id": "env-github-owner",
+              "name": "github_owner",
+              "value": "bluebeckie",
+              "type": "string"
+            },
+            {
+              "id": "env-github-repo",
+              "name": "github_repo",
+              "value": "Notion-Backup",
+              "type": "string"
+            },
+            {
+              "id": "env-github-branch",
+              "name": "github_branch",
+              "value": "main",
+              "type": "string"
+            },
+            {
+              "id": "env-max-page",
+              "name": "max_page",
+              "value": 10,
+              "type": "number"
+            },
+            {
+              "id": "env-page-size",
+              "name": "page_size",
+              "value": 10,
+              "type": "number"
+            },
+            {
+              "id": "693cb96e-60a9-4746-b149-bd7e007a47e6",
+              "name": "line_user",
+              "value": "={{$env.TESTUSER}}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1696,
+        -640
+      ],
+      "id": "9b77a9fa-2c89-4b47-9cc3-c76afcabb698",
+      "name": "setEnvs"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/search",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Notion-Version",
+              "value": "2025-09-03"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"filter\": {\n    \"property\": \"object\",\n    \"value\": \"page\"\n  },\n  \"sort\": {\n    \"direction\": \"descending\",\n    \"timestamp\": \"last_edited_time\"\n  },\n  \"page_size\": 10\n}",
+        "options": {
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {
+                    "type": "body",
+                    "name": "start_cursor",
+                    "value": "={{ $response.body.next_cursor }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{!$response.body.has_more}}"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -1504,
+        -640
+      ],
+      "id": "0c359c43-3b2b-4612-af4e-4b00b917e683",
+      "name": "Search Updated Pages",
+      "credentials": {
+        "notionApi": {
+          "id": "a3FsCJAWtH6b55G6",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "results",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        -1296,
+        -640
+      ],
+      "id": "a67dce09-c89f-4522-b5b0-19e6bb789a4d",
+      "name": "Split Results"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "filter-days",
+              "leftValue": "={{ $json.last_edited_time }}",
+              "rightValue": "={{ $today.minus({days: $('setEnvs').item.json.trace_days}) }}",
+              "operator": {
+                "type": "dateTime",
+                "operation": "after"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        -1088,
+        -640
+      ],
+      "id": "c6274342-6124-44b9-9f08-f4821e7c2ad8",
+      "name": "Filter Recent Pages"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Extract the important fields and compute file path\nconst item = $input.item.json;\n\n// Get title - try multiple locations\nlet title = 'Untitled';\ntry {\n  if (item.properties?.title?.title?.[0]?.plain_text) {\n    title = item.properties.title.title[0].plain_text;\n  } else if (item.properties?.Name?.title?.[0]?.plain_text) {\n    title = item.properties.Name.title[0].plain_text;\n  } else {\n    // Try any title-type property\n    for (const [key, val] of Object.entries(item.properties || {})) {\n      if (val.type === 'title' && val.title?.[0]?.plain_text) {\n        title = val.title[0].plain_text;\n        break;\n      }\n    }\n  }\n} catch(e) { title = item.id; }\n\n// Sanitize title for use as filename\nconst safeTitle = title\n  .replace(/[\\/\\\\:*?\"<>|]/g, '-')\n  .replace(/\\s+/g, ' ')\n  .trim();\n\nconst parentType = item.parent?.type || 'workspace';\nconst parentDbId = item.parent?.database_id?.replaceAll('-', '') || null;\nconst parentPageId = item.parent?.page_id?.replaceAll('-', '') || null;\n\nreturn {\n  json: {\n    id: item.id,\n    title: safeTitle,\n    originalTitle: title,\n    parentType: parentType,\n    parentDbId: parentDbId,\n    parentPageId: parentPageId,\n    lastEditedTime: item.last_edited_time,\n    url: item.url,\n    properties: item.properties\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -880,
+        -640
+      ],
+      "id": "3f999673-d4b2-4b4a-8ecf-1bafe8e5d9e1",
+      "name": "Extract Page Fields"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.parentType }}",
+                    "rightValue": "workspace",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "d2166794-6479-4717-8b40-f384341ffa53"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "top_level_page"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.parentType }}",
+                    "rightValue": "database_id",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "e8028ab5-5acf-456c-affc-76b612178786"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "db_entry"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        -1904,
+        -352
+      ],
+      "id": "76d08365-c18f-4308-9869-f989613afded",
+      "name": "Route by Parent Type"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.notion.com/v1/blocks/{{ $json.id }}/children?page_size=100",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2025-09-03"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -1296,
+        -304
+      ],
+      "id": "21e6d287-f524-43a2-99bd-659008402980",
+      "name": "Get Blocks (Top Page)",
+      "credentials": {
+        "notionApi": {
+          "id": "a3FsCJAWtH6b55G6",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const pageData = $('Route by Parent Type').item.json;\nconst blocksData = $input.item.json;\n\nfunction blockToMarkdown(block) {\n  const type = block.type;\n  const b = block[type];\n  if (!b) return '';\n  \n  const getText = (richText) => {\n    if (!richText) return '';\n    return richText.map(t => {\n      let text = t.plain_text || '';\n      if (t.annotations?.bold) text = `**${text}**`;\n      if (t.annotations?.italic) text = `*${text}*`;\n      if (t.annotations?.code) text = `\\`${text}\\``;\n      if (t.href) text = `[${text}](${t.href})`;\n      return text;\n    }).join('');\n  };\n  \n  switch(type) {\n    case 'paragraph': return getText(b.rich_text) + '\\n\\n';\n    case 'heading_1': return `# ${getText(b.rich_text)}\\n\\n`;\n    case 'heading_2': return `## ${getText(b.rich_text)}\\n\\n`;\n    case 'heading_3': return `### ${getText(b.rich_text)}\\n\\n`;\n    case 'bulleted_list_item': return `- ${getText(b.rich_text)}\\n`;\n    case 'numbered_list_item': return `1. ${getText(b.rich_text)}\\n`;\n    case 'to_do': return `- [${b.checked ? 'x' : ' '}] ${getText(b.rich_text)}\\n`;\n    case 'toggle': return `> ${getText(b.rich_text)}\\n\\n`;\n    case 'quote': return `> ${getText(b.rich_text)}\\n\\n`;\n    case 'callout': return `> 💡 ${getText(b.rich_text)}\\n\\n`;\n    case 'code': return `\\`\\`\\`${b.language || ''}\\n${getText(b.rich_text)}\\n\\`\\`\\`\\n\\n`;\n    case 'divider': return `---\\n\\n`;\n    case 'image': {\n      const url = b.external?.url || b.file?.url || '';\n      const caption = getText(b.caption) || 'image';\n      return `![${caption}](${url})\\n\\n`;\n    }\n    case 'bookmark': return `[${getText(b.caption) || b.url}](${b.url})\\n\\n`;\n    case 'child_page': return `📄 [${b.title}](./${pageData.title}/${b.title}.md)\\n\\n`;\n    case 'child_database': return `🗄️ [${b.title}](./${pageData.title}/${b.title}/)\\n\\n`;\n    case 'table_of_contents': return `<!-- TOC -->\\n\\n`;\n    default: return '';\n  }\n}\n\nconst blocks = blocksData.results || [];\nlet md = `# ${pageData.title}\\n\\n`;\nmd += `> Last edited: ${pageData.lastEditedTime}\\n> Notion URL: ${pageData.url}\\n\\n---\\n\\n`;\n\nfor (const block of blocks) {\n  md += blockToMarkdown(block);\n}\n\n// File path: top-level = root of repo\nconst filePath = `${pageData.title}.md`;\n\nreturn [{\n  json: {\n    ...pageData,\n    markdown: md,\n    filePath: filePath,\n    commitMessage: `backup: update ${pageData.title}`\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1088,
+        -304
+      ],
+      "id": "f2baf9ec-0c6a-4b70-91bb-841648ce0f12",
+      "name": "Blocks → Markdown (Top Page)"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.notion.com/v1/pages/{{ $json.id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2025-09-03"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -1696,
+        -144
+      ],
+      "id": "63d00cec-dbc0-4dda-a38d-993ef7b2ff36",
+      "name": "Get DB Entry Properties",
+      "credentials": {
+        "notionApi": {
+          "id": "a3FsCJAWtH6b55G6",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://api.notion.com/v1/blocks/{{ $json.id }}/children?page_size=100",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2025-09-03"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -1296,
+        -144
+      ],
+      "id": "55d2b85a-1d0f-4038-9718-204386e325ed",
+      "name": "Get Blocks (DB Entry)",
+      "credentials": {
+        "notionApi": {
+          "id": "a3FsCJAWtH6b55G6",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://api.notion.com/v1/databases/{{ $json.parentDbId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2025-09-03"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -1296,
+        16
+      ],
+      "id": "a2ee17a8-5179-4c75-b6ee-6d28112a14ca",
+      "name": "Get DB Info (for folder name)",
+      "credentials": {
+        "notionApi": {
+          "id": "a3FsCJAWtH6b55G6",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Both merged by position, so $input.all() gives [blocksItem, dbInfoItem]\n// entryData lives in Merge DB Data upstream\n\n// console.log(JSON.stringify($input.item.json));\n\nconst merged = $input.item.json;\nconst blocksData = merged.blockdata;  // Get Blocks 的結果\nconst dbInfo = merged.dbinfo;      // Get DB Info 的結果\nconst entryData = $('Enrich Entry with Properties').item.json;\n\n// Get DB title\nlet dbTitle = 'Unknown DB';\ntry {\n  dbTitle = dbInfo.title?.[0]?.plain_text || dbInfo.id;\n} catch(e) {}\nconst safeDbTitle = dbTitle.replace(/[\\/\\\\:*?\"<>|]/g, '-').trim();\n\n// Helper to extract property value as string\nfunction propToString(prop) {\n  if (!prop) return '';\n  switch(prop.type) {\n    case 'title': return prop.title?.map(t => t.plain_text).join('') || '';\n    case 'rich_text': return prop.rich_text?.map(t => t.plain_text).join('') || '';\n    case 'number': return prop.number?.toString() || '';\n    case 'select': return prop.select?.name || '';\n    case 'multi_select': return prop.multi_select?.map(s => s.name).join(', ') || '';\n    case 'status': return prop.status?.name || '';\n    case 'date': return prop.date?.start || '';\n    case 'checkbox': return prop.checkbox ? 'true' : 'false';\n    case 'url': return prop.url || '';\n    case 'email': return prop.email || '';\n    case 'phone_number': return prop.phone_number || '';\n    case 'people': return prop.people?.map(p => p.name).join(', ') || '';\n    case 'created_time': return prop.created_time || '';\n    case 'last_edited_time': return prop.last_edited_time || '';\n    case 'formula': return prop.formula?.string || prop.formula?.number?.toString() || prop.formula?.boolean?.toString() || '';\n    default: return JSON.stringify(prop);\n  }\n}\n\n// Blocks → Markdown\nfunction blockToMarkdown(block) {\n  const type = block.type;\n  const b = block[type];\n  if (!b) return ''; \n  const getText = (richText) => {\n    if (!richText) return '';\n    return richText.map(t => {\n      let text = t.plain_text || '';\n      if (t.annotations?.bold) text = `**${text}**`;\n      if (t.annotations?.italic) text = `*${text}*`;\n      if (t.annotations?.code) text = `\\`${text}\\``;\n      if (t.href) text = `[${text}](${t.href})`;\n      return text;\n    }).join('');\n  };\n  \n  switch(type) {\n    case 'paragraph': return getText(b.rich_text) + '\\n\\n';\n    case 'heading_1': return `# ${getText(b.rich_text)}\\n\\n`;\n    case 'heading_2': return `## ${getText(b.rich_text)}\\n\\n`;\n    case 'heading_3': return `### ${getText(b.rich_text)}\\n\\n`;\n    case 'bulleted_list_item': return `- ${getText(b.rich_text)}\\n`;\n    case 'numbered_list_item': return `1. ${getText(b.rich_text)}\\n`;\n    case 'to_do': return `- [${b.checked ? 'x' : ' '}] ${getText(b.rich_text)}\\n`;      \n    case 'quote': return `> ${getText(b.rich_text)}\\n\\n`;\n    // case 'callout':\n        // const icon = b.icon?.emoji || '💡';\n        // return `> ${icon} ${getText(b.rich_text)}\\n\\n`;\n    case 'code': return `\\`\\`\\`${b.language || ''}\\n${getText(b.rich_text)}\\n\\`\\`\\`\\n\\n`;\n    case 'divider': return `---\\n\\n`;\n    case 'image': {\n      const url = b.external?.url || b.file?.url || '';\n      return `![image](${url})\\n\\n`;\n    }\n    case 'bookmark': return `[${getText(b.caption) || b.url}](${b.url})\\n\\n`;\n    default: return '';\n  }\n}\n\n// YAML frontmatter from properties\nconst props = entryData.fullProperties || {};\nlet frontmatter = '---\\n';\nfor (const [key, val] of Object.entries(props)) {\n  const strVal = propToString(val).replace(/'/g, \"''\");\n  frontmatter += `${key}: '${strVal}'\\n`;\n}\nfrontmatter += `---\\n\\n`;\n\n// Body\nconst blocks = blocksData.results || [];\nlet body = '';\nfor (const block of blocks) {\n  body += blockToMarkdown(block);\n}\n\nconst md = frontmatter + `# ${entryData.title}\\n\\n` + (body || '_No content_\\n');\nconst filePath = `${safeDbTitle}/${entryData.title}.md`;\n\nreturn {\n  json: {\n    ...entryData,\n    dbTitle: safeDbTitle,\n    markdown: md,\n    filePath: filePath,\n    commitMessage: `backup: update ${safeDbTitle}/${entryData.title}`\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -704,
+        -128
+      ],
+      "id": "fc26151d-05f0-45f3-a728-9d0e7037cc1e",
+      "name": "Build DB Entry Markdown"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -480,
+        -288
+      ],
+      "id": "73653cda-1db2-46d2-aeb5-333d88ac33aa",
+      "name": "Merge All"
+    },
+    {
+      "parameters": {
+        "batchSize": 3,
+        "options": {
+          "reset": false
+        }
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -240,
+        -288
+      ],
+      "id": "740397ef-43d8-45cb-a7eb-baf92fe3acbc",
+      "name": "Batch (3 at a time)"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.github.com/repos/{{ $('setEnvs').item.json.github_owner }}/{{ $('setEnvs').item.json.github_repo }}/contents/{{ encodeURIComponent($json.filePath) }}?ref={{ $('setEnvs').item.json.github_branch }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "githubApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -32,
+        -272
+      ],
+      "id": "fa830729-c9a4-4be8-81b4-da2881461f16",
+      "name": "Get Existing File SHA",
+      "credentials": {
+        "githubApi": {
+          "id": "yNDsYR41UOS2SgXh",
+          "name": "GitHub account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare the payload for GitHub create/update file API\nconst fileData = $('Batch (3 at a time)').item.json;\nconst shaResponse = $input.item.json;\n\n// Base64 encode the markdown content\nconst content = Buffer.from(fileData.markdown, 'utf8').toString('base64');\n\n// If file exists, sha is required to update\nconst sha = shaResponse?.sha || null;\n\nreturn [{\n  json: {\n    ...fileData,\n    base64Content: content,\n    existingSha: sha,\n    commitMessage: `n8n backup for changes dated ${fileData.lastEditedTime?.slice(0, 10)}`\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        160,
+        -272
+      ],
+      "id": "31b5cf53-5763-435b-a14d-26b178479857",
+      "name": "Prepare GitHub Payload"
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://api.github.com/repos/{{ $('setEnvs').item.json.github_owner }}/{{ $('setEnvs').item.json.github_repo }}/contents/{{ encodeURIComponent($json.filePath) }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "githubApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"message\": \"{{ $json.commitMessage }}\",\n  \"content\": \"{{ $json.base64Content }}\",\n  \"branch\": \"{{ $('setEnvs').item.json.github_branch }}\"\n  {{ $json.existingSha ? ', \"sha\": \"' + $json.existingSha + '\"' : '' }}\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        368,
+        -272
+      ],
+      "id": "5cb9a7cb-a299-44d7-8cdc-e3c8b89d7b0c",
+      "name": "Push to GitHub",
+      "credentials": {
+        "githubApi": {
+          "id": "yNDsYR41UOS2SgXh",
+          "name": "GitHub account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        560,
+        -272
+      ],
+      "id": "6823053a-cabd-4782-98ce-8c71772a2284",
+      "name": "Wait 1s (Rate Limit)",
+      "webhookId": "0b8036b2-73a7-419d-8cc5-64e7e6a36f54"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Attach full properties from GET /pages/{id} back onto the entry metadata\nconst routeData = $('Route by Parent Type').item.json;\nconst fullPage = $input.item.json;\n\nreturn {\n  json: {\n    ...routeData,\n    fullProperties: fullPage.properties\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1504,
+        -144
+      ],
+      "id": "8cb40d9a-da73-4583-8dce-72e3ce369058",
+      "name": "Enrich Entry with Properties"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -880,
+        -128
+      ],
+      "id": "f3ac6d64-884f-47e9-b206-94e9779a2987",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"blockdata\": {{ $json }}\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1088,
+        -144
+      ],
+      "id": "7d1a83a6-ee28-4d1f-8dd8-65bcf989fc56",
+      "name": "Set Blocks"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"dbinfo\" : {{ $json }}\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1088,
+        16
+      ],
+      "id": "d1aca476-9a8c-44a5-b643-9ffb10010132",
+      "name": "Set DBInfo"
+    },
+    {
+      "parameters": {
+        "operation": "toText",
+        "sourceProperty": "markdown",
+        "binaryPropertyName": "=data",
+        "options": {
+          "fileName": "={{ $json.filePath }}"
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        -240,
+        -80
+      ],
+      "id": "69fcb346-dead-4241-9101-aa5273b76831",
+      "name": "Convert to File"
+    },
+    {
+      "parameters": {
+        "name": "={{ $binary.data.fileName }}",
+        "driveId": {
+          "__rl": true,
+          "value": "My Drive",
+          "mode": "list",
+          "cachedResultName": "My Drive",
+          "cachedResultUrl": "https://drive.google.com/drive/my-drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "16umEjBue-nU1Lnp_V3VbQEomjpcR77Li",
+          "mode": "list",
+          "cachedResultName": "Notion-Backup",
+          "cachedResultUrl": "https://drive.google.com/drive/folders/16umEjBue-nU1Lnp_V3VbQEomjpcR77Li"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        160,
+        48
+      ],
+      "id": "992b98fa-9714-4d96-9c4b-b58b4b1b3cb9",
+      "name": "Upload file",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "9k5KNqsbbhq71HFq",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "to": "={{ $('setEnvs').item.json.line_user }}",
+        "messages": {
+          "values": [
+            {
+              "text": "={{ $json.count }} Notion files uploaded:{{ $json.fileList }} \nat google drive\nhttps://drive.google.com/drive/folders/16umEjBue-nU1Lnp_V3VbQEomjpcR77Li?dmr=1&ec=wgc-drive-%5Bmodule%5D-goto "
+            }
+          ]
+        }
+      },
+      "type": "@aotoki/n8n-nodes-line-messaging.lineMessaging",
+      "typeVersion": 1,
+      "position": [
+        560,
+        -96
+      ],
+      "id": "6c07b68e-3811-49e1-8eaa-41f9d22fac07",
+      "name": "Line Messaging",
+      "credentials": {
+        "lineMessagingApi": {
+          "id": "eUoF6V9WeinnU9pI",
+          "name": "Line Messaging account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -32,
+        -80
+      ],
+      "id": "73228988-cda3-43b9-b89a-9dad7e1d642b",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "b3b34a13-caf3-42af-bfe8-bfbd7980b206",
+              "leftValue": "={{ $('Loop Over Items').context.noItemsLeft }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        448,
+        128
+      ],
+      "id": "ed161dfa-7cc9-483b-bb36-f30b9125563e",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "include": "specifiedFields",
+        "fieldsToInclude": "name",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        160,
+        -96
+      ],
+      "id": "65eb59ce-a62e-4e15-9422-3e798b3a4cbe",
+      "name": "Aggregate"
+    },
+    {
+      "parameters": {
+        "jsCode": "const allItems = $input.first().json.data;\n\n// console.log($input.first().json.data);\nconsole.log(allItems);\n\nconst fileNames = allItems.map(item => item.name || '').filter(Boolean);\n\nreturn [{\n  json: {\n    fileList: fileNames.join('\\n'),\n    count: fileNames.length\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        368,
+        -96
+      ],
+      "id": "ba36e150-b07a-4b04-b76f-a3db5d5d3453",
+      "name": "Note List"
+    }
+  ],
+  "pinData": {
+    "Filter Recent Pages": [
+      {
+        "json": {
+          "object": "page",
+          "id": "2d8a492c-7ce7-8054-93c2-f6c80d119aa4",
+          "created_time": "2025-12-29T16:11:00.000Z",
+          "last_edited_time": "2026-02-26T04:31:00.000Z",
+          "created_by": {
+            "object": "user",
+            "id": "6d5b7099-25c5-4282-b3e4-bce4ac03a6d6"
+          },
+          "last_edited_by": {
+            "object": "user",
+            "id": "6d5b7099-25c5-4282-b3e4-bce4ac03a6d6"
+          },
+          "cover": null,
+          "icon": null,
+          "parent": {
+            "type": "page_id",
+            "page_id": "237a492c-7ce7-80af-a16b-d0f3a857cec9"
+          },
+          "archived": false,
+          "in_trash": false,
+          "is_locked": false,
+          "properties": {
+            "title": {
+              "id": "title",
+              "type": "title",
+              "title": [
+                {
+                  "type": "text",
+                  "text": {
+                    "content": "2026 Weekly Recap",
+                    "link": null
+                  },
+                  "annotations": {
+                    "bold": false,
+                    "italic": false,
+                    "strikethrough": false,
+                    "underline": false,
+                    "code": false,
+                    "color": "default"
+                  },
+                  "plain_text": "2026 Weekly Recap",
+                  "href": null
+                }
+              ]
+            }
+          },
+          "url": "https://www.notion.so/2026-Weekly-Recap-2d8a492c7ce7805493c2f6c80d119aa4",
+          "public_url": null
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      },
+      {
+        "json": {
+          "object": "page",
+          "id": "30ca492c-7ce7-8000-a0f5-e3502335d582",
+          "created_time": "2026-02-19T06:33:00.000Z",
+          "last_edited_time": "2026-02-24T01:13:00.000Z",
+          "created_by": {
+            "object": "user",
+            "id": "6d5b7099-25c5-4282-b3e4-bce4ac03a6d6"
+          },
+          "last_edited_by": {
+            "object": "user",
+            "id": "6d5b7099-25c5-4282-b3e4-bce4ac03a6d6"
+          },
+          "cover": null,
+          "icon": null,
+          "parent": {
+            "type": "database_id",
+            "database_id": "2f0a492c-7ce7-8077-b116-cd62bbec94a9"
+          },
+          "archived": false,
+          "in_trash": false,
+          "is_locked": false,
+          "properties": {
+            "source": {
+              "id": "%3DwYc",
+              "type": "url",
+              "url": null
+            },
+            "tag": {
+              "id": "%5Dra%7D",
+              "type": "multi_select",
+              "multi_select": []
+            },
+            "org": {
+              "id": "l%7B%3FM",
+              "type": "multi_select",
+              "multi_select": []
+            },
+            "date": {
+              "id": "yCRU",
+              "type": "date",
+              "date": {
+                "start": "2026-02-19",
+                "end": null,
+                "time_zone": null
+              }
+            },
+            "Item": {
+              "id": "title",
+              "type": "title",
+              "title": [
+                {
+                  "type": "text",
+                  "text": {
+                    "content": "Saas 行業市值影響",
+                    "link": null
+                  },
+                  "annotations": {
+                    "bold": false,
+                    "italic": false,
+                    "strikethrough": false,
+                    "underline": false,
+                    "code": false,
+                    "color": "default"
+                  },
+                  "plain_text": "Saas 行業市值影響",
+                  "href": null
+                }
+              ]
+            }
+          },
+          "url": "https://www.notion.so/Saas-30ca492c7ce78000a0f5e3502335d582",
+          "public_url": null
+        },
+        "pairedItem": {
+          "item": 1
+        }
+      },
+      {
+        "json": {
+          "object": "page",
+          "id": "2aca492c-7ce7-80b5-968a-dbf58cec45bf",
+          "created_time": "2025-11-15T12:35:00.000Z",
+          "last_edited_time": "2026-02-23T00:12:00.000Z",
+          "created_by": {
+            "object": "user",
+            "id": "6d5b7099-25c5-4282-b3e4-bce4ac03a6d6"
+          },
+          "last_edited_by": {
+            "object": "user",
+            "id": "6d5b7099-25c5-4282-b3e4-bce4ac03a6d6"
+          },
+          "cover": null,
+          "icon": null,
+          "parent": {
+            "type": "database_id",
+            "database_id": "2aca492c-7ce7-809e-8a73-d9e25d12a0f5"
+          },
+          "archived": false,
+          "in_trash": false,
+          "is_locked": false,
+          "properties": {
+            "Created": {
+              "id": "%3F%40Zh",
+              "type": "created_time",
+              "created_time": "2025-11-15T12:35:00.000Z"
+            },
+            "status": {
+              "id": "%3Frq%5E",
+              "type": "status",
+              "status": {
+                "id": "9db20f11-0172-441c-b5e7-a5c1d012c66b",
+                "name": "Done",
+                "color": "green"
+              }
+            },
+            "Tags": {
+              "id": "lLnM",
+              "type": "multi_select",
+              "multi_select": [
+                {
+                  "id": "ecbb537a-5afb-4aa1-ab40-5b8dcf5b8904",
+                  "name": "n8n",
+                  "color": "pink"
+                }
+              ]
+            },
+            "Name": {
+              "id": "title",
+              "type": "title",
+              "title": [
+                {
+                  "type": "text",
+                  "text": {
+                    "content": "Notion Backup Bot",
+                    "link": null
+                  },
+                  "annotations": {
+                    "bold": false,
+                    "italic": false,
+                    "strikethrough": false,
+                    "underline": false,
+                    "code": false,
+                    "color": "default"
+                  },
+                  "plain_text": "Notion Backup Bot",
+                  "href": null
+                }
+              ]
+            }
+          },
+          "url": "https://www.notion.so/Notion-Backup-Bot-2aca492c7ce780b5968adbf58cec45bf",
+          "public_url": null
+        },
+        "pairedItem": {
+          "item": 2
+        }
+      },
+      {
+        "json": {
+          "object": "page",
+          "id": "237a492c-7ce7-80af-a16b-d0f3a857cec9",
+          "created_time": "2025-07-21T08:40:00.000Z",
+          "last_edited_time": "2026-02-22T06:30:00.000Z",
+          "created_by": {
+            "object": "user",
+            "id": "6d5b7099-25c5-4282-b3e4-bce4ac03a6d6"
+          },
+          "last_edited_by": {
+            "object": "user",
+            "id": "6d5b7099-25c5-4282-b3e4-bce4ac03a6d6"
+          },
+          "cover": {
+            "type": "external",
+            "external": {
+              "url": "https://www.notion.so/images/page-cover/nasa_orion_nebula.jpg"
+            }
+          },
+          "icon": {
+            "type": "emoji",
+            "emoji": "🏹"
+          },
+          "parent": {
+            "type": "workspace",
+            "workspace": true
+          },
+          "archived": false,
+          "in_trash": false,
+          "is_locked": false,
+          "properties": {
+            "title": {
+              "id": "title",
+              "type": "title",
+              "title": [
+                {
+                  "type": "text",
+                  "text": {
+                    "content": "Beckie’s Backlog",
+                    "link": null
+                  },
+                  "annotations": {
+                    "bold": false,
+                    "italic": false,
+                    "strikethrough": false,
+                    "underline": false,
+                    "code": false,
+                    "color": "default"
+                  },
+                  "plain_text": "Beckie’s Backlog",
+                  "href": null
+                }
+              ]
+            }
+          },
+          "url": "https://www.notion.so/Beckie-s-Backlog-237a492c7ce780afa16bd0f3a857cec9",
+          "public_url": null
+        },
+        "pairedItem": {
+          "item": 3
+        }
+      },
+      {
+        "json": {
+          "object": "page",
+          "id": "301a492c-7ce7-8044-876b-d6e8522e6773",
+          "created_time": "2026-02-08T05:13:00.000Z",
+          "last_edited_time": "2026-02-22T06:14:00.000Z",
+          "created_by": {
+            "object": "user",
+            "id": "6d5b7099-25c5-4282-b3e4-bce4ac03a6d6"
+          },
+          "last_edited_by": {
+            "object": "user",
+            "id": "6d5b7099-25c5-4282-b3e4-bce4ac03a6d6"
+          },
+          "cover": null,
+          "icon": null,
+          "parent": {
+            "type": "database_id",
+            "database_id": "2a7a492c-7ce7-800a-8970-df79ace9b05b"
+          },
+          "archived": false,
+          "in_trash": false,
+          "is_locked": false,
+          "properties": {
+            "channel": {
+              "id": "S%60%7Cf",
+              "type": "multi_select",
+              "multi_select": [
+                {
+                  "id": "5ef03806-8601-4f43-bc55-3c8b0e5486ab",
+                  "name": "FB",
+                  "color": "blue"
+                }
+              ]
+            },
+            "Created": {
+              "id": "~%7B%3AV",
+              "type": "created_time",
+              "created_time": "2026-02-08T05:13:00.000Z"
+            },
+            "Name": {
+              "id": "title",
+              "type": "title",
+              "title": [
+                {
+                  "type": "text",
+                  "text": {
+                    "content": "【實作筆記】我只是想匯出分頁呀…",
+                    "link": null
+                  },
+                  "annotations": {
+                    "bold": false,
+                    "italic": false,
+                    "strikethrough": false,
+                    "underline": false,
+                    "code": false,
+                    "color": "default"
+                  },
+                  "plain_text": "【實作筆記】我只是想匯出分頁呀…",
+                  "href": null
+                }
+              ]
+            },
+            "Date": {
+              "id": "717bfec6-0c93-4c7d-a39a-dfc15f36e167",
+              "type": "date",
+              "date": {
+                "start": "2026-02-08",
+                "end": null,
+                "time_zone": null
+              }
+            },
+            "status": {
+              "id": "ec9ace22-d7a9-4e5b-9758-abdf005a7e50",
+              "type": "status",
+              "status": {
+                "id": "38c6349a-2059-4176-8884-c2ced8c5ce03",
+                "name": "Done",
+                "color": "green"
+              }
+            }
+          },
+          "url": "https://www.notion.so/301a492c7ce78044876bd6e8522e6773",
+          "public_url": null
+        },
+        "pairedItem": {
+          "item": 4
+        }
+      },
+      {
+        "json": {
+          "object": "page",
+          "id": "303a492c-7ce7-8075-b89e-f871900f2dd8",
+          "created_time": "2026-02-10T03:00:00.000Z",
+          "last_edited_time": "2026-02-21T17:18:00.000Z",
+          "created_by": {
+            "object": "user",
+            "id": "6d5b7099-25c5-4282-b3e4-bce4ac03a6d6"
+          },
+          "last_edited_by": {
+            "object": "user",
+            "id": "6d5b7099-25c5-4282-b3e4-bce4ac03a6d6"
+          },
+          "cover": null,
+          "icon": null,
+          "parent": {
+            "type": "database_id",
+            "database_id": "2a7a492c-7ce7-800a-8970-df79ace9b05b"
+          },
+          "archived": false,
+          "in_trash": false,
+          "is_locked": false,
+          "properties": {
+            "channel": {
+              "id": "S%60%7Cf",
+              "type": "multi_select",
+              "multi_select": [
+                {
+                  "id": "5ef03806-8601-4f43-bc55-3c8b0e5486ab",
+                  "name": "FB",
+                  "color": "blue"
+                }
+              ]
+            },
+            "Created": {
+              "id": "~%7B%3AV",
+              "type": "created_time",
+              "created_time": "2026-02-10T03:00:00.000Z"
+            },
+            "Name": {
+              "id": "title",
+              "type": "title",
+              "title": [
+                {
+                  "type": "text",
+                  "text": {
+                    "content": "【實作筆記】接個Data Commons MCP 來用用",
+                    "link": null
+                  },
+                  "annotations": {
+                    "bold": false,
+                    "italic": false,
+                    "strikethrough": false,
+                    "underline": false,
+                    "code": false,
+                    "color": "default"
+                  },
+                  "plain_text": "【實作筆記】接個Data Commons MCP 來用用",
+                  "href": null
+                }
+              ]
+            },
+            "Date": {
+              "id": "717bfec6-0c93-4c7d-a39a-dfc15f36e167",
+              "type": "date",
+              "date": {
+                "start": "2026-02-10",
+                "end": null,
+                "time_zone": null
+              }
+            },
+            "status": {
+              "id": "ec9ace22-d7a9-4e5b-9758-abdf005a7e50",
+              "type": "status",
+              "status": {
+                "id": "38c6349a-2059-4176-8884-c2ced8c5ce03",
+                "name": "Done",
+                "color": "green"
+              }
+            }
+          },
+          "url": "https://www.notion.so/Data-Commons-MCP-303a492c7ce78075b89ef871900f2dd8",
+          "public_url": null
+        },
+        "pairedItem": {
+          "item": 5
+        }
+      },
+      {
+        "json": {
+          "object": "page",
+          "id": "2fea492c-7ce7-80cd-b272-ceeffdf99c3b",
+          "created_time": "2026-02-05T00:05:00.000Z",
+          "last_edited_time": "2026-02-19T06:52:00.000Z",
+          "created_by": {
+            "object": "user",
+            "id": "6d5b7099-25c5-4282-b3e4-bce4ac03a6d6"
+          },
+          "last_edited_by": {
+            "object": "user",
+            "id": "6d5b7099-25c5-4282-b3e4-bce4ac03a6d6"
+          },
+          "cover": null,
+          "icon": null,
+          "parent": {
+            "type": "database_id",
+            "database_id": "2f0a492c-7ce7-8077-b116-cd62bbec94a9"
+          },
+          "archived": false,
+          "in_trash": false,
+          "is_locked": false,
+          "properties": {
+            "source": {
+              "id": "%3DwYc",
+              "type": "url",
+              "url": "https://techcrunch.com/2026/02/04/meet-gizmo-a-tiktok-for-interactive-vibe-coded-mini-apps/"
+            },
+            "tag": {
+              "id": "%5Dra%7D",
+              "type": "multi_select",
+              "multi_select": []
+            },
+            "org": {
+              "id": "l%7B%3FM",
+              "type": "multi_select",
+              "multi_select": []
+            },
+            "date": {
+              "id": "yCRU",
+              "type": "date",
+              "date": {
+                "start": "2026-02-05",
+                "end": null,
+                "time_zone": null
+              }
+            },
+            "Item": {
+              "id": "title",
+              "type": "title",
+              "title": [
+                {
+                  "type": "text",
+                  "text": {
+                    "content": "Gizmo for TikTok video generarion",
+                    "link": null
+                  },
+                  "annotations": {
+                    "bold": false,
+                    "italic": false,
+                    "strikethrough": false,
+                    "underline": false,
+                    "code": false,
+                    "color": "default"
+                  },
+                  "plain_text": "Gizmo for TikTok video generarion",
+                  "href": null
+                }
+              ]
+            }
+          },
+          "url": "https://www.notion.so/Gizmo-for-TikTok-video-generarion-2fea492c7ce780cdb272ceeffdf99c3b",
+          "public_url": null
+        },
+        "pairedItem": {
+          "item": 6
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Daily at 2am": {
+      "main": [
+        [
+          {
+            "node": "setEnvs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "setEnvs": {
+      "main": [
+        [
+          {
+            "node": "Search Updated Pages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Updated Pages": {
+      "main": [
+        [
+          {
+            "node": "Split Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Results": {
+      "main": [
+        [
+          {
+            "node": "Filter Recent Pages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Recent Pages": {
+      "main": [
+        [
+          {
+            "node": "Extract Page Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Page Fields": {
+      "main": [
+        [
+          {
+            "node": "Route by Parent Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Parent Type": {
+      "main": [
+        [
+          {
+            "node": "Get Blocks (Top Page)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get DB Entry Properties",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Blocks (Top Page)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Blocks (Top Page)": {
+      "main": [
+        [
+          {
+            "node": "Blocks → Markdown (Top Page)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Blocks → Markdown (Top Page)": {
+      "main": [
+        [
+          {
+            "node": "Merge All",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get DB Entry Properties": {
+      "main": [
+        [
+          {
+            "node": "Enrich Entry with Properties",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Blocks (DB Entry)": {
+      "main": [
+        [
+          {
+            "node": "Set Blocks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get DB Info (for folder name)": {
+      "main": [
+        [
+          {
+            "node": "Set DBInfo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build DB Entry Markdown": {
+      "main": [
+        [
+          {
+            "node": "Merge All",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge All": {
+      "main": [
+        [
+          {
+            "node": "Batch (3 at a time)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Convert to File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Batch (3 at a time)": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Get Existing File SHA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Existing File SHA": {
+      "main": [
+        [
+          {
+            "node": "Prepare GitHub Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare GitHub Payload": {
+      "main": [
+        [
+          {
+            "node": "Push to GitHub",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Push to GitHub": {
+      "main": [
+        [
+          {
+            "node": "Wait 1s (Rate Limit)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enrich Entry with Properties": {
+      "main": [
+        [
+          {
+            "node": "Get Blocks (DB Entry)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get DB Info (for folder name)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Build DB Entry Markdown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Blocks": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set DBInfo": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Convert to File": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 1s (Rate Limit)": {
+      "main": [
+        []
+      ]
+    },
+    "Upload file": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [
+          {
+            "node": "Aggregate",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Upload file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        []
+      ]
+    },
+    "Aggregate": {
+      "main": [
+        [
+          {
+            "node": "Note List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Note List": {
+      "main": [
+        [
+          {
+            "node": "Line Messaging",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "v8u5tS-TnHmfAi6-FLcDF",
+    "callerPolicy": "workflowsFromSameOwner",
+    "binaryMode": "separate",
+    "timeSavedPerExecution": 3
+  },
+  "versionId": "6c52d2a9-67a1-453a-8e94-0716d67a86ec",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "062ea64aba2dc73b0b0d16cc9a5bd0c7b8e0d92119bead8dd32f9c6fc5903f72"
+  },
+  "id": "LM88ZS3vLd0W1fVb",
+  "tags": []
+}
