@@ -1,8 +1,8 @@
 # Notion Backup
 ## Goal 
 - Search for updated pages within N days
-- backup pages files to github
-
+- Backup page files to Google Drive and GitHub
+- Send Line notification on completion
 
 ## WorkLog
 ### v1
@@ -22,11 +22,21 @@
 - dedupe parent nodes
 - output links to google sheets for further operation
 
+<img width="923" height="671" alt="v3 workflow" src="https://github.com/user-attachments/assets/0962810c-7437-4e48-819d-98c384524b33" />
+<img width="744" height="316" alt="google_sheet_urls" src="https://github.com/user-attachments/assets/9fc96843-4161-4363-8790-362e9f277e8b" />
 
-<<<<<<< HEAD
+### v4 (gDrive + GitHub + Line)
+- search for updated pages → split, filter, extract page fields
+- route by parent type (top-level page vs DB entry)
+  - **top-level page**: get blocks → convert to markdown
+  - **DB entry**: get entry properties → get blocks → get DB info (for folder name) → build markdown
+- merge all results → batch (3 at a time)
+- **GitHub branch**: get existing file SHA → prepare payload → push to GitHub → rate limit wait → aggregate → GitHub Line notification
+- **Google Drive branch**: convert to file → loop & upload to Google Drive → aggregate → note list → gDrive Line notification
+- ⚠️ Line notification to be completed
 
-=======
->>>>>>> 0382fbb (notion backup v3)
+![v4 workflow](Notion-Backup-gDrive-Git-Line.png)
+
 ## Lesson Learned
 - google service accounts don't have access to google drive, need to use google oauth2
 - google drive and google sheet are different APIs in GCP.
@@ -35,8 +45,3 @@
 - notion url: remove '-' in page id for page uri
 - browser-use cloud service could help with browser automation with provided login credentials, but it needs subscription
 - browser-use local version: it's easier to set up with docker. otherwise may encounter various env, package, dependency issue.
-<<<<<<< HEAD
-<img width="923" height="671" alt="v3 workflow" src="https://github.com/user-attachments/assets/0962810c-7437-4e48-819d-98c384524b33" />
-<img width="744" height="316" alt="google_sheet_urls" src="https://github.com/user-attachments/assets/9fc96843-4161-4363-8790-362e9f277e8b" />
-=======
->>>>>>> 0382fbb (notion backup v3)
