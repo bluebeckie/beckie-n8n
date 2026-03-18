@@ -1,0 +1,108 @@
+{
+  "name": "Error Notification",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "bf6e2cb8-fd09-40f5-b44b-00da5031b977",
+      "name": "Error Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "to": "={{ $json.TESTUSER }}",
+        "messages": {
+          "values": [
+            {
+              "text": "=Workflow Failed: {{ $('Error Trigger').item.json.workflow.name }} at {{ $('Error Trigger').item.json.execution.url }}\nmessage: {{ $('Error Trigger').item.json.execution.error.message }}"
+            }
+          ]
+        }
+      },
+      "type": "@aotoki/n8n-nodes-line-messaging.lineMessaging",
+      "typeVersion": 1,
+      "position": [
+        368,
+        0
+      ],
+      "id": "9d422f14-b0c7-4e07-a5ac-c8300f3db385",
+      "name": "Line Messaging",
+      "credentials": {
+        "lineMessagingApi": {
+          "id": "AoLJzjO2AK0sywR5",
+          "name": "Line Messaging account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "798107a6-1902-46d8-8430-a45c4e5d5cd1",
+              "name": "TESTUSER",
+              "value": "={{$env.TESTUSER}}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        176,
+        0
+      ],
+      "id": "26648203-565d-4147-aad1-2c877efd6998",
+      "name": "Set Envs"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Set Envs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Line Messaging": {
+      "main": [
+        []
+      ]
+    },
+    "Set Envs": {
+      "main": [
+        [
+          {
+            "node": "Line Messaging",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "9ee2bd89-21ec-4fc7-8d39-f314629cb417",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "d532cac2f2fb92b6dc742f3aad9f5fa44adbf1327f6052a9488ddfddbec2ade3"
+  },
+  "id": "X0gCJUcKwDthSTen",
+  "tags": []
+}

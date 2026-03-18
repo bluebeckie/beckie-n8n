@@ -1,5 +1,5 @@
 {
-  "name": "Notion Backup - GitHub",
+  "name": "Notion-Backup-gDrive-Git-Line",
   "nodes": [
     {
       "parameters": {
@@ -16,7 +16,7 @@
       "typeVersion": 1.2,
       "position": [
         0,
-        -160
+        -192
       ],
       "id": "92a67e8c-4051-4b38-b57b-087ac6caf9b7",
       "name": "Daily at 2am"
@@ -655,33 +655,6 @@
     },
     {
       "parameters": {
-        "operation": "send",
-        "to": "={{ $('setEnvs').item.json.line_user }}",
-        "messages": {
-          "values": [
-            {
-              "text": "={{ $json.count }} Notion files uploaded:\n{{ $json.fileList }} \nat google drive\nhttps://drive.google.com/drive/folders/16umEjBue-nU1Lnp_V3VbQEomjpcR77Li?dmr=1&ec=wgc-drive-%5Bmodule%5D-goto "
-            }
-          ]
-        }
-      },
-      "type": "@aotoki/n8n-nodes-line-messaging.lineMessaging",
-      "typeVersion": 1,
-      "position": [
-        2448,
-        592
-      ],
-      "id": "8f91ded2-d17e-43dd-b7e5-e2be845e49c0",
-      "name": "Line Messaging",
-      "credentials": {
-        "lineMessagingApi": {
-          "id": "AoLJzjO2AK0sywR5",
-          "name": "Line Messaging account"
-        }
-      }
-    },
-    {
-      "parameters": {
         "options": {}
       },
       "type": "n8n-nodes-base.splitInBatches",
@@ -740,7 +713,7 @@
         "messages": {
           "values": [
             {
-              "text": "={{ $json.count }} Notion files checked in: \n{{ $json.fileList }}\nat google drive\nhttps://drive.google.com/drive/folders/16umEjBue-nU1Lnp_V3VbQEomjpcR77Li?dmr=1&ec=wgc-drive-%5Bmodule%5D-goto "
+              "text": "={{ $json.count }} Notion files checked in: \n{{ $json.fileList }}\nat git https://github.com/{{$('setEnvs').first().json.github_owner}}/{{$('setEnvs').first().json.github_repo}}"
             }
           ]
         }
@@ -772,6 +745,33 @@
       ],
       "id": "ed83b81e-7930-42f3-b709-0bfd8f8cb581",
       "name": "Title List"
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "to": "={{ $('setEnvs').item.json.line_user }}",
+        "messages": {
+          "values": [
+            {
+              "text": "={{ $json.count }} Notion files uploaded:\n{{ $json.fileList }} \nat google drive\nhttps://drive.google.com/drive/folders/16umEjBue-nU1Lnp_V3VbQEomjpcR77Li?dmr=1&ec=wgc-drive-%5Bmodule%5D-goto "
+            }
+          ]
+        }
+      },
+      "type": "@aotoki/n8n-nodes-line-messaging.lineMessaging",
+      "typeVersion": 1,
+      "position": [
+        2448,
+        592
+      ],
+      "id": "8f91ded2-d17e-43dd-b7e5-e2be845e49c0",
+      "name": "drive notify",
+      "credentials": {
+        "lineMessagingApi": {
+          "id": "AoLJzjO2AK0sywR5",
+          "name": "Line Messaging account"
+        }
+      }
     }
   ],
   "pinData": {},
@@ -1098,7 +1098,7 @@
       "main": [
         [
           {
-            "node": "Line Messaging",
+            "node": "drive notify",
             "type": "main",
             "index": 0
           }
@@ -1144,7 +1144,7 @@
     "executionOrder": "v1",
     "binaryMode": "separate"
   },
-  "versionId": "8e22148f-db84-4504-beb8-faddd674b45e",
+  "versionId": "db094531-a575-4387-86bc-03d106f077ad",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "d532cac2f2fb92b6dc742f3aad9f5fa44adbf1327f6052a9488ddfddbec2ade3"
