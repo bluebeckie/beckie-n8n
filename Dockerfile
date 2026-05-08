@@ -1,51 +1,26 @@
-# Use the latest stable Node.js LTS version (Node 24 Slim - Active LTS)
-FROM node:24-slim
+# n8n image for Cloud Run Jobs.
+# Build: docker build -t beckie-n8n .
+# Run:   docker run --rm --env-file .env \
+#          -e WORKFLOW_NAME=notion-backup \
+#          -v "$PWD/credentials.json:/secrets/credentials.json:ro" \
+#          beckie-n8n
+FROM docker.n8n.io/n8nio/n8n:latest
 
-# Install system dependencies required by Playwright.
-# These packages are essential for running headless browsers (Chromium, Firefox, WebKit).
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-    # Playwright Browser Dependencies (Debian 12/Bookworm based list)
-    libgconf-2-4 \
-    libatk1.0-0 \
-    libatk-bridge2.0-0 \
-    libgdk-pixbuf2.0-0 \
-    libgtk-3-0 \
-    libgbm-dev \
-    libnss3 \
-    libxss1 \
-    libasound2 \
-    libxrandr2 \
-    libpangocairo-1.0-0 \
-    libxcomposite1 \
-    libxcursor1 \
-    libxdamage1 \
-    libxi6 \
-    libxtst6 \
-    fonts-liberation \
-    # Utility for cleanup
-    wget \
-    # Clean up APT lists to keep the image size down
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+ENV GENERIC_TIMEZONE=Asia/Taipei \
+    TZ=Asia/Taipei \
+    N8N_BLOCK_ENV_ACCESS_IN_NODE=false \
+    N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true \
+    NODE_FUNCTION_ALLOW_BUILTIN=process \
+    N8N_RUNNERS_ENABLED=true
 
-# Install n8n globally, and install the 'playwright' package globally.
-# Installing playwright here ensures that the necessary browser binaries are
-# downloaded during the image build process, making the container ready to go.
-# We also install 'canvas' as it's often a useful dependency for graphic operations
-# in custom code nodes.
-RUN npm install -g n8n@latest playwright canvas
-
-# Create a working directory for n8n configuration and data
-WORKDIR /home/node/n8n_data
-
-# Switch to the 'node' user for security best practices
+USER root
+RUN mkdir -p /workflows && chown node:node /workflows
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
 USER node
 
-# Expose the default n8n port
-EXPOSE 5678
+COPY --chown=node:node AI-WatchTower/AI-Watch-Tower.json                /workflows/ai-watchtower.json
+COPY --chown=node:node Notion-Backup/Notion-Backup-gDrive-Git-Line.json /workflows/notion-backup.json
+COPY --chown=node:node Error-Notification.json                          /workflows/error-notification.json
 
-# Command to run n8n.
-# Since playwright is installed and configured, it will be immediately usable
-# within any n8n Code node or relevant custom node.
-CMD ["n8n", "start"]
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

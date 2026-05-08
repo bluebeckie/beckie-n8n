@@ -1,36 +1,20 @@
-    version: '3.8'
-
-    services:
-      n8n:
-        image: n8nio/n8n
-        restart: always
-        ports:
-          - "5678:5678"
-        environment:
-          # Basic n8n environment variables
-          - N8N_HOST=${N8N_HOST:-localhost}
-          - N8N_PORT=5678
-          - N8N_PROTOCOL=http
-          - N8N_EDITOR_BASE_URL=http://${N8N_HOST:-localhost}:5678/
-          - WEBHOOK_URL=http://${N8N_HOST:-localhost}:5678/
-          # ... other n8n environment variables as needed (e.g., database)
-        volumes:
-          - n8n_data:/home/node/.n8n
-
-      playwright_service:
-        image: mcr.microsoft.com/playwright/python:latest # Or other Playwright image (e.g., node)
-        restart: always
-        # You might expose a port if you want to interact with it directly,
-        # but for n8n integration, you'll likely use it as a backend service.
-        # ports:
-        #   - "8000:8000"
-        # If your Playwright scripts need access to specific files or data,
-        # you can mount volumes here.
-        # volumes:
-        #   - ./playwright_scripts:/app/scripts
-        environment:
-          # Any environment variables your Playwright scripts might need
-          - PLAYWRIGHT_NO_SANDBOX=1 # Required for Playwright in some container environments
-
+services:
+  n8n:
+    image: docker.n8n.io/n8nio/n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - GENERIC_TIMEZONE=Asia/Taipei
+      - TZ=Asia/Taipei
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
+      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
+      - NODE_FUNCTION_ALLOW_BUILTIN=process
+      - N8N_RUNNERS_ENABLED=true
+    env_file:
+      - .env
     volumes:
-      n8n_data:
+      - n8n_data:/home/node/.n8n
+
+volumes:
+  n8n_data:
